@@ -1,0 +1,18 @@
+# Language detection for GitHub
+*.sql linguist-language=SQL
+*.py linguist-language=Python
+*.js linguist-language=JavaScript
+*.html linguist-language=HTML
+*.css linguist-language=CSS
+*.sh linguist-language=Shell
+
+# Ensure SQL files are properly highlighted
+*.sql text eol=lf
+
+# Documentation files
+*.md linguist-documentation
+
+# Generated/vendor files to exclude from language stats
+venv/* linguist-vendored
+__pycache__/* linguist-generated
+*.pyc linguist-generated
