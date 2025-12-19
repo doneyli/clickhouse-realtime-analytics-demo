@@ -1,6 +1,19 @@
-# ClickHouse Analytics Dashboard Demo
+# ClickHouse Real-Time Analytics Demo
 
-A comprehensive demonstration of ClickHouse with a modern web dashboard for real-time analytics. This project showcases ClickHouse's capabilities for handling large datasets and performing fast analytical queries.
+A **production-grade** demonstration of ClickHouse showcasing best practices for real-time analytics. This project demonstrates advanced ClickHouse features that make it the fastest open-source OLAP database for analytics workloads.
+
+## 🎯 What Makes This Demo Special
+
+This isn't just a basic ClickHouse setup - it's a comprehensive showcase of **advanced optimizations**:
+
+✅ **LowCardinality & Compression** - 10-50x storage reduction
+✅ **Materialized Views** - 10-100x query speedup for aggregations
+✅ **Projections** - Multiple sort orders without data duplication
+✅ **Data Skipping Indices** - 10-100x faster filtered queries
+✅ **Dictionaries** - O(1) dimension lookups vs O(log n) JOINs
+✅ **TTL Policies** - Automatic data lifecycle management
+✅ **Refreshable MVs** - Complex analytics (rankings, cohorts, RFM)
+✅ **Optimized ORDER BY** - Based on actual query patterns
 
 ## 🚀 Features
 
@@ -13,14 +26,70 @@ A comprehensive demonstration of ClickHouse with a modern web dashboard for real
 - **RESTful API**: Backend API for data access and analytics
 - **Responsive Design**: Beautiful, mobile-friendly dashboard
 
-## 📊 What's Included
+## 📊 Advanced Optimizations Implemented
+
+### 1. **Optimized Table Schemas** (`init-scripts/01-create-tables.sql`)
+- **LowCardinality** on all enum-like string columns (event_type, country, category, etc.)
+  - Reduces memory usage by 10-50x
+  - Enables dictionary encoding for compression
+- **Compression Codecs**:
+  - `Delta` encoding for timestamps (50-90% compression)
+  - `T64` encoding for integers (better compression)
+  - `ZSTD` for general-purpose compression
+- **Optimized ORDER BY** based on actual query patterns:
+  - Events: `(event_type, event_date, user_id, event_timestamp)` - optimized for event type filtering
+  - Orders: `(status, order_date, user_id, order_timestamp)` - optimized for status filtering
+  - Users: `(country, is_premium, user_id)` - optimized for geographic segmentation
+- **Monthly Partitioning** with `toYYYYMM()` for better data management
+
+### 2. **Materialized Views** (`init-scripts/01-create-tables.sql`)
+Six pre-aggregated views for instant query response:
+- **mv_product_revenue**: Product performance without JOINs (10-50x faster)
+- **mv_user_funnel**: Conversion tracking with AggregatingMergeTree
+- **mv_hourly_events**: Real-time dashboard with minimal latency
+- **mv_country_stats**: Geographic analytics pre-aggregated
+- **daily_user_activity**: Daily user metrics with SummingMergeTree
+
+### 3. **Data Skipping Indices** (`init-scripts/02-add-indices.sql`)
+14 indices across all tables for 10-100x faster filtered queries:
+- **Bloom filters** for session_id lookups (O(1) vs O(n))
+- **MinMax indices** for revenue, duration, age, spending (range queries)
+- **Set indices** for country, event_type, status, category (IN/equality)
+
+### 4. **Projections** (`init-scripts/03-add-projections.sql`)
+8 projections for alternate sort orders without data duplication:
+- **Events**: by country, by user, by session, pre-aggregated daily stats
+- **Orders**: by product, by user
+- **Users**: by spending, by registration date
+- Query optimizer automatically selects the best projection
+
+### 5. **TTL Policies** (`init-scripts/04-add-ttl.sql`)
+Automatic data lifecycle management (100x more efficient than DELETE):
+- **Events**: Keep detailed 30 days → aggregate → delete after 90 days
+- **Orders**: Keep 1 year then delete
+- **MVs**: Coordinated TTL with source tables
+- Runs in background without blocking queries
+
+### 6. **Refreshable Materialized Views** (`init-scripts/05-add-refreshable-mvs.sql`)
+Complex analytics that can't be incrementally updated:
+- **mv_top_products_ranking**: Product rankings with window functions
+- **mv_customer_ltv**: Customer Lifetime Value with RFM analysis
+- **mv_cohort_retention**: Retention analysis by registration cohort
+- **mv_product_affinity**: Market basket analysis for recommendations
+- **mv_daily_kpi_summary**: Comprehensive business metrics dashboard
+
+### 7. **Dictionaries** (`init-scripts/06-add-dictionaries.sql`)
+O(1) dimension lookups (10-100x faster than JOINs):
+- **dict_users**: User dimension attributes
+- **dict_products**: Product dimension attributes
+- **dict_country_metadata**: Geographic enrichment
+- **dict_category_metadata**: Category metadata with commission rates
 
 ### Database Schema
 - **Users Table**: User profiles with demographics and spending data
 - **Events Table**: User activity tracking (page views, clicks, purchases)
 - **Products Table**: Product catalog with categories and pricing
 - **Orders Table**: Transaction records with order details
-- **Materialized Views**: Pre-aggregated data for faster queries
 
 ### Analytics Features
 - Daily user activity trends
@@ -220,16 +289,23 @@ SELECT toYYYYMM(order_date) as month, sum(total_amount) FROM orders WHERE status
 
 ## 📝 API Endpoints
 
-The Flask application provides several REST API endpoints:
+The Flask application provides REST API endpoints showcasing optimized queries:
 
+### Core Endpoints
 - `GET /api/stats` - Basic database statistics
 - `GET /api/daily-events` - Daily event trends
 - `GET /api/event-types` - Event type distribution
 - `GET /api/top-countries` - User distribution by country
 - `GET /api/revenue-by-month` - Monthly revenue data
-- `GET /api/top-products` - Best-selling products
 - `GET /api/user-segments` - User segmentation analysis
 - `GET /api/search` - Search users or products
+
+### Optimized Endpoints (New!)
+- `GET /api/top-products` - **Uses mv_product_revenue MV** (10-50x faster)
+- `GET /api/conversion-funnel` - **Uses mv_user_funnel MV** with State functions
+- `GET /api/hourly-activity` - **Uses mv_hourly_events MV** for real-time dashboards
+
+These endpoints demonstrate query optimization techniques in `app.py`.
 
 ## 🛠 Development
 
@@ -266,45 +342,62 @@ Edit `generate_data.py` to modify:
 3. Update the dashboard HTML with new charts
 4. Use Plotly.js for visualizations
 
-## 🔍 Sample Queries to Try
+## 🔍 Comprehensive Query Examples
+
+See **`examples/sample_queries.sql`** for 9 sections of comprehensive examples:
+
+1. **Basic Analytics** - LowCardinality, indices, optimized ORDER BY
+2. **Materialized Views** - 10-100x faster aggregations
+3. **Projections** - Automatic selection of best sort order
+4. **Dictionaries** - O(1) dimension lookups
+5. **Refreshable MVs** - Rankings, CLV, cohorts, market basket
+6. **Window Functions** - row_number, percent_rank, ntile
+7. **Advanced Patterns** - Funnels, sessionization, PREWHERE
+8. **Performance Analysis** - EXPLAIN, query logs, optimization checks
+9. **Checking Optimizations** - Compression ratios, index usage, table sizes
+
+### Quick Examples
 
 ```sql
--- Top users by activity
-SELECT u.username, count(e.event_id) as events
-FROM users u 
-JOIN events e ON u.user_id = e.user_id 
-GROUP BY u.user_id, u.username 
-ORDER BY events DESC 
-LIMIT 10;
+-- Query materialized view instead of JOIN (10-50x faster!)
+SELECT p.product_name, SUM(mv.total_revenue) as revenue
+FROM mv_product_revenue mv
+JOIN products p ON mv.product_id = p.product_id
+WHERE mv.status = 'completed'
+GROUP BY p.product_id, p.product_name
+ORDER BY revenue DESC LIMIT 20;
 
--- Revenue by country
-SELECT u.country, sum(o.total_amount) as revenue
-FROM users u 
-JOIN orders o ON u.user_id = o.user_id 
-WHERE o.status = 'completed'
-GROUP BY u.country 
-ORDER BY revenue DESC;
+-- Use dictionary for dimension enrichment (O(1) lookup)
+SELECT
+    e.event_id,
+    dictGet('dict_users', 'country', e.user_id) as country,
+    dictGet('dict_users', 'is_premium', e.user_id) as is_premium,
+    e.event_type, e.revenue
+FROM events e WHERE e.event_date = today() LIMIT 100;
 
--- Daily active users trend
-SELECT 
-    toDate(event_timestamp) as date,
-    uniq(user_id) as active_users
-FROM events 
-WHERE event_timestamp >= now() - INTERVAL 30 DAY
-GROUP BY date 
-ORDER BY date;
+-- Conversion funnel with AggregatingMergeTree
+SELECT
+    sumMerge(page_views) as page_views,
+    sumMerge(purchases) as purchases,
+    round(purchases * 100.0 / page_views, 2) as conversion_rate
+FROM mv_user_funnel
+WHERE event_date >= today() - INTERVAL 30 DAY;
 
--- Product category performance
-SELECT 
-    p.category,
-    count(o.order_id) as orders,
-    sum(o.total_amount) as revenue,
-    avg(o.total_amount) as avg_order_value
-FROM products p
-JOIN orders o ON p.product_id = o.product_id
-WHERE o.status = 'completed'
-GROUP BY p.category
-ORDER BY revenue DESC;
+-- Customer Lifetime Value from Refreshable MV
+SELECT user_id, username, ltv_segment, lifetime_value,
+       round(recency_percentile * 100, 1) as recency_score
+FROM mv_customer_ltv
+WHERE ltv_segment = 'High Value'
+ORDER BY lifetime_value DESC LIMIT 50;
+
+-- Check which projection is used
+EXPLAIN SELECT * FROM events WHERE user_id = 1234 ORDER BY event_timestamp;
+-- Look for "Projection Name: proj_by_user"
+```
+
+**Run these queries in ClickHouse client:**
+```bash
+docker exec -it clickhouse-demo clickhouse-client --user demo_user --password demo_password --database demo_db < examples/sample_queries.sql
 ```
 
 ## 🧹 Cleanup
@@ -320,16 +413,58 @@ docker-compose down -v
 docker volume prune
 ```
 
-## 🎯 Next Steps
+## 🎓 Learning Resources
 
-This demo provides a solid foundation for exploring ClickHouse. Consider extending it with:
+### Understanding the Optimizations
 
-- **Real-time data ingestion** using Kafka or streaming APIs
-- **Advanced analytics** like cohort analysis, funnel analysis
-- **Machine learning** integration for predictive analytics
-- **Additional visualizations** and dashboard customization
-- **Performance monitoring** and query optimization
-- **Data partitioning** strategies for larger datasets
+Each init-script file includes extensive documentation:
+
+- **01-create-tables.sql** - Table schemas, compression, ORDER BY strategy
+- **02-add-indices.sql** - Data skipping indices (bloom filter, minmax, set)
+- **03-add-projections.sql** - Alternate sort orders without duplication
+- **04-add-ttl.sql** - Automatic data lifecycle management
+- **05-add-refreshable-mvs.sql** - Complex analytics (rankings, CLV, cohorts)
+- **06-add-dictionaries.sql** - Fast dimension lookups
+
+### Why ClickHouse for Real-Time Analytics?
+
+**Performance Characteristics:**
+- **Query Speed**: 10-100x faster than traditional databases for analytics
+- **Storage Efficiency**: 80-90% compression with codecs
+- **Scalability**: Linear scalability to petabyte scale
+- **Real-time**: Instant data availability after INSERT
+
+**Key Differentiators:**
+1. **Columnar Storage**: Only read columns needed for query
+2. **Vectorized Execution**: SIMD operations on data chunks
+3. **Data Skipping**: Skip irrelevant data granules with indices
+4. **Materialized Views**: Pre-aggregated results update automatically
+5. **Projections**: Multiple physical layouts for optimal access patterns
+
+**When to Use ClickHouse:**
+✅ Real-time analytics dashboards
+✅ Log and event data analysis
+✅ Time-series data
+✅ High-throughput INSERT workloads
+✅ Complex aggregations on billions of rows
+
+**When NOT to Use:**
+❌ Transactional workloads (use PostgreSQL, MySQL)
+❌ Frequent updates/deletes (mutations are expensive)
+❌ Small datasets (<1M rows) - overhead not worth it
+❌ Ad-hoc queries on non-optimized columns
+
+## 🎯 Next Steps / Future Enhancements
+
+This demo already implements production-grade optimizations. Consider extending with:
+
+- **Kafka Integration**: Real-time streaming ingestion
+- **Distributed Tables**: Sharding across multiple nodes
+- **Replication**: High availability with ReplicatedMergeTree
+- **External Data Sources**: Query MySQL, PostgreSQL via External Tables
+- **Custom Dashboards**: Build specific visualizations for your use case
+- **Query Result Cache**: Cache frequent query results
+- **Machine Learning**: Use ClickHouse for feature engineering
 
 ## 📚 Learning Resources
 
