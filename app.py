@@ -282,17 +282,27 @@ def get_conversion_funnel():
 
     try:
         # Query the funnel MV with AggregatingMergeTree functions
+        # Use CTE to compute merged aggregates first, then calculate ratios
         query = """
+        WITH agg AS (
+            SELECT
+                countMerge(total_events) as total_events,
+                sumMerge(page_views) as page_views,
+                sumMerge(cart_adds) as cart_adds,
+                sumMerge(purchases) as purchases,
+                sumMerge(total_revenue) as revenue
+            FROM mv_user_funnel
+            WHERE event_date >= today() - INTERVAL 30 DAY
+        )
         SELECT
-            countMerge(total_events) as total_events,
-            sumMerge(page_views) as page_views,
-            sumMerge(cart_adds) as cart_adds,
-            sumMerge(purchases) as purchases,
-            sumMerge(total_revenue) as revenue,
-            round(sumMerge(purchases) * 100.0 / sumMerge(page_views), 2) as conversion_rate,
-            round(sumMerge(cart_adds) * 100.0 / sumMerge(page_views), 2) as cart_add_rate
-        FROM mv_user_funnel
-        WHERE event_date >= today() - INTERVAL 30 DAY
+            total_events,
+            page_views,
+            cart_adds,
+            purchases,
+            revenue,
+            round(purchases * 100.0 / page_views, 2) as conversion_rate,
+            round(cart_adds * 100.0 / page_views, 2) as cart_add_rate
+        FROM agg
         """
 
         results = client.execute(query)
