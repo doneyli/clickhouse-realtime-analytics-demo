@@ -97,7 +97,77 @@ AS SELECT
 FROM events
 GROUP BY event_date, user_id;
 
--- Create view for user analytics
+-- Create materialized view for product revenue analytics
+-- Eliminates JOINs at query time for product performance queries
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_product_revenue
+ENGINE = SummingMergeTree()
+ORDER BY (product_id, order_date, status)
+POPULATE  -- Backfill existing data
+AS SELECT
+    product_id,
+    toDate(order_timestamp) as order_date,
+    status,
+    count() as order_count,
+    sum(total_amount) as total_revenue,
+    sum(quantity) as total_quantity,
+    avg(total_amount) as avg_order_value
+FROM orders
+GROUP BY product_id, order_date, status;
+
+-- Create materialized view for user conversion funnel
+-- Tracks user journey from page_view → add_to_cart → purchase
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_user_funnel
+ENGINE = AggregatingMergeTree()
+ORDER BY (user_id, event_date)
+POPULATE
+AS SELECT
+    user_id,
+    event_date,
+    countState() as total_events,
+    sumState(CASE WHEN event_type = 'page_view' THEN 1 ELSE 0 END) as page_views,
+    sumState(CASE WHEN event_type = 'add_to_cart' THEN 1 ELSE 0 END) as cart_adds,
+    sumState(CASE WHEN event_type = 'purchase' THEN 1 ELSE 0 END) as purchases,
+    sumState(revenue) as total_revenue
+FROM events
+GROUP BY user_id, event_date;
+
+-- Create materialized view for hourly event aggregation
+-- Enables real-time dashboard with minimal latency
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_hourly_events
+ENGINE = SummingMergeTree()
+ORDER BY (event_date, event_hour, event_type, country)
+POPULATE
+AS SELECT
+    event_date,
+    toHour(event_timestamp) as event_hour,
+    event_type,
+    device_type,
+    country,
+    count() as event_count,
+    uniq(user_id) as unique_users,
+    sum(duration_seconds) as total_duration,
+    avg(duration_seconds) as avg_duration,
+    sum(revenue) as total_revenue
+FROM events
+GROUP BY event_date, event_hour, event_type, device_type, country;
+
+-- Create materialized view for country-level analytics
+-- Pre-aggregated for geographic reporting
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_country_stats
+ENGINE = SummingMergeTree()
+ORDER BY (country, event_date)
+POPULATE
+AS SELECT
+    country,
+    event_date,
+    event_type,
+    count() as event_count,
+    uniq(user_id) as unique_users,
+    sum(revenue) as total_revenue
+FROM events
+GROUP BY country, event_date, event_type;
+
+-- Create view for user analytics (regular view for flexible queries)
 CREATE VIEW IF NOT EXISTS user_analytics AS
 SELECT
     u.user_id,
