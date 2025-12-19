@@ -21,29 +21,12 @@ USE demo_db;
 -- Option B: For demo - keep only last 7 days of detailed events
 -- ALTER TABLE events MODIFY TTL event_date + INTERVAL 7 DAY DELETE;
 
--- Option C: Hierarchical TTL - aggregate old data before deleting
--- Keep detailed data for 30 days, then aggregate, then delete after 90 days
-ALTER TABLE events MODIFY TTL
-    -- Keep detailed events for 30 days
-    event_date + INTERVAL 30 DAY,
-    -- After 30 days, aggregate to hourly granularity
-    event_date + INTERVAL 30 DAY GROUP BY
-        toDate(event_timestamp) as event_date,
-        toStartOfHour(event_timestamp) as event_hour,
-        event_type,
-        country,
-        device_type
-    SET
-        event_timestamp = min(event_timestamp),
-        duration_seconds = sum(duration_seconds),
-        revenue = sum(revenue),
-        -- Keep first values for other columns
-        user_id = any(user_id),
-        session_id = any(session_id),
-        page_url = any(page_url),
-        browser = any(browser),
-    -- Delete aggregated data after 90 days total
-    event_date + INTERVAL 90 DAY DELETE;
+-- Option C: Simple deletion after 90 days (for demo compatibility)
+-- Note: Hierarchical TTL requires GROUP BY to match primary key prefix
+-- Since our ORDER BY is (event_type, event_date, user_id, event_timestamp),
+-- we use simple deletion here. For production with custom ORDER BY for TTL,
+-- design the primary key to support your TTL GROUP BY strategy.
+ALTER TABLE events MODIFY TTL event_date + INTERVAL 90 DAY DELETE;
 
 -- ============================================================================
 -- ORDERS TABLE TTL POLICIES
@@ -63,31 +46,34 @@ ALTER TABLE orders MODIFY TTL
 -- ============================================================================
 -- MATERIALIZED VIEW TTL POLICIES
 -- ============================================================================
-
--- TTL for daily user activity MV
--- Keep aggregated daily data for 1 year
-ALTER TABLE daily_user_activity MODIFY TTL
-    event_date + INTERVAL 1 YEAR DELETE;
-
--- TTL for hourly events MV
--- Keep hourly aggregations for 90 days (detailed), then keep daily for 1 year
-ALTER TABLE mv_hourly_events MODIFY TTL
-    event_date + INTERVAL 90 DAY DELETE;
-
--- TTL for product revenue MV
--- Keep product revenue data for 2 years
-ALTER TABLE mv_product_revenue MODIFY TTL
-    order_date + INTERVAL 2 YEAR DELETE;
-
--- TTL for user funnel MV
--- Keep conversion funnel data for 1 year
-ALTER TABLE mv_user_funnel MODIFY TTL
-    event_date + INTERVAL 1 YEAR DELETE;
-
--- TTL for country stats MV
--- Keep geographic data for 1 year
-ALTER TABLE mv_country_stats MODIFY TTL
-    event_date + INTERVAL 1 YEAR DELETE;
+-- Note: TTL is applied to the destination table of the MV, not the MV itself
+-- MaterializedViews are just SELECT queries; the data is stored in underlying tables
+--
+-- For MVs created with ENGINE = SummingMergeTree/AggregatingMergeTree,
+-- we can set TTL on those target tables.
+--
+-- The source table's TTL (events, orders) controls when source data expires.
+-- MV's target table TTL controls when aggregated data expires.
+--
+-- For this demo, we'll set TTL on target tables of our MVs:
+--
+-- Note: daily_user_activity, mv_hourly_events, mv_product_revenue, mv_user_funnel,
+-- and mv_country_stats are MaterializedViews. To set TTL, we need to specify it
+-- during table creation in 01-create-tables.sql, or we can modify the .inner table
+-- that ClickHouse automatically creates.
+--
+-- For this demo setup, we'll skip MV TTL to avoid errors.
+-- In production, define TTL in the ENGINE clause during MV creation:
+--
+-- Example:
+-- CREATE MATERIALIZED VIEW mv_hourly_events
+-- ENGINE = SummingMergeTree()
+-- ORDER BY (event_date, event_hour)
+-- TTL event_date + INTERVAL 90 DAY DELETE
+-- AS SELECT ...
+--
+-- Since our MVs are already created without TTL in the ENGINE clause,
+-- we cannot modify them here. This is a design consideration for your schema.
 
 -- ============================================================================
 -- TTL FOR SPECIFIC COLUMNS (OPTIONAL)
