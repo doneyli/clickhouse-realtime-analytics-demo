@@ -85,36 +85,60 @@ class ClickHouseStreamer:
         return self.get_table_count("products")
     
     def cleanup_old_data(self):
-        """Remove old data to maintain size limits"""
-        # Clean up old events
-        events_count = self.get_table_count("events")
-        if events_count > MAX_EVENTS_TOTAL:
-            excess = events_count - MAX_EVENTS_TOTAL + BATCH_SIZE_EVENTS
-            cleanup_query = f"""
-            DELETE FROM events 
-            WHERE event_id IN (
-                SELECT event_id FROM events 
-                ORDER BY event_timestamp ASC 
-                LIMIT {excess}
-            )
-            """
-            self.execute_query(cleanup_query)
-            print(f"🧹 Cleaned up {excess} old events")
-        
-        # Clean up old orders
-        orders_count = self.get_table_count("orders")
-        if orders_count > MAX_ORDERS_TOTAL:
-            excess = orders_count - MAX_ORDERS_TOTAL + BATCH_SIZE_ORDERS
-            cleanup_query = f"""
-            DELETE FROM orders 
-            WHERE order_id IN (
-                SELECT order_id FROM orders 
-                ORDER BY order_timestamp ASC 
-                LIMIT {excess}
-            )
-            """
-            self.execute_query(cleanup_query)
-            print(f"🧹 Cleaned up {excess} old orders")
+        """
+        BEST PRACTICE: Use TTL instead of DELETE for data lifecycle management
+
+        DELETE operations in ClickHouse are VERY EXPENSIVE because:
+        1. They create mutations that block queries
+        2. They require rewriting entire data parts
+        3. They don't free space immediately
+        4. They impact query performance
+
+        RECOMMENDED APPROACH: Use TTL policies instead (see init-scripts/04-add-ttl.sql)
+        - TTL runs in background without blocking queries
+        - TTL is 100x more efficient than DELETE
+        - TTL handles both deletion and aggregation
+        - Set once, runs automatically forever
+
+        Example TTL for this use case:
+        ALTER TABLE events MODIFY TTL event_date + INTERVAL 7 DAY DELETE;
+
+        For demo purposes, we'll skip manual cleanup and let TTL handle it.
+        If TTL is not configured, uncomment the DELETE code below (not recommended).
+        """
+        # DEPRECATED: Manual cleanup using DELETE (inefficient)
+        # Uncomment only if TTL is not configured
+
+        # events_count = self.get_table_count("events")
+        # if events_count > MAX_EVENTS_TOTAL:
+        #     excess = events_count - MAX_EVENTS_TOTAL + BATCH_SIZE_EVENTS
+        #     cleanup_query = f"""
+        #     DELETE FROM events
+        #     WHERE event_id IN (
+        #         SELECT event_id FROM events
+        #         ORDER BY event_timestamp ASC
+        #         LIMIT {excess}
+        #     )
+        #     """
+        #     self.execute_query(cleanup_query)
+        #     print(f"🧹 Cleaned up {excess} old events (using inefficient DELETE)")
+
+        # orders_count = self.get_table_count("orders")
+        # if orders_count > MAX_ORDERS_TOTAL:
+        #     excess = orders_count - MAX_ORDERS_TOTAL + BATCH_SIZE_ORDERS
+        #     cleanup_query = f"""
+        #     DELETE FROM orders
+        #     WHERE order_id IN (
+        #         SELECT order_id FROM orders
+        #         ORDER BY order_timestamp ASC
+        #         LIMIT {excess}
+        #     )
+        #     """
+        #     self.execute_query(cleanup_query)
+        #     print(f"🧹 Cleaned up {excess} old orders (using inefficient DELETE)")
+
+        # INFO: With TTL configured, cleanup happens automatically in background
+        pass
     
     def generate_new_events(self) -> List[Dict]:
         """Generate new realistic events"""
