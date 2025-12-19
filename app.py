@@ -202,25 +202,26 @@ def get_revenue_by_month():
 
 @app.route('/api/top-products')
 def get_top_products():
-    """Get top-selling products"""
+    """Get top-selling products using materialized view"""
     client = get_clickhouse_client()
-    
+
     try:
+        # Use materialized view instead of JOIN - much faster!
         query = """
-        SELECT 
+        SELECT
             p.product_name,
             p.category,
             p.price,
-            sum(o.quantity) as total_sold,
-            sum(o.total_amount) as total_revenue
-        FROM orders o
-        JOIN products p ON o.product_id = p.product_id
-        WHERE o.status = 'completed'
+            sum(mv.total_quantity) as total_sold,
+            sum(mv.total_revenue) as total_revenue
+        FROM mv_product_revenue mv
+        JOIN products p ON mv.product_id = p.product_id
+        WHERE mv.status = 'completed'
         GROUP BY p.product_id, p.product_name, p.category, p.price
         ORDER BY total_sold DESC
         LIMIT 20
         """
-        
+
         results = client.execute(query)
         data = []
         for row in results:
@@ -231,9 +232,9 @@ def get_top_products():
                 'total_sold': row[3],
                 'total_revenue': float(row[4])
             })
-        
+
         return jsonify(data)
-    
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -271,6 +272,78 @@ def get_user_segments():
         
         return jsonify(data)
     
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/conversion-funnel')
+def get_conversion_funnel():
+    """Get conversion funnel metrics using materialized view"""
+    client = get_clickhouse_client()
+
+    try:
+        # Query the funnel MV with AggregatingMergeTree functions
+        query = """
+        SELECT
+            countMerge(total_events) as total_events,
+            sumMerge(page_views) as page_views,
+            sumMerge(cart_adds) as cart_adds,
+            sumMerge(purchases) as purchases,
+            sumMerge(total_revenue) as revenue,
+            round(sumMerge(purchases) * 100.0 / sumMerge(page_views), 2) as conversion_rate,
+            round(sumMerge(cart_adds) * 100.0 / sumMerge(page_views), 2) as cart_add_rate
+        FROM mv_user_funnel
+        WHERE event_date >= today() - INTERVAL 30 DAY
+        """
+
+        results = client.execute(query)
+        if results:
+            row = results[0]
+            data = {
+                'total_events': row[0],
+                'page_views': row[1],
+                'cart_adds': row[2],
+                'purchases': row[3],
+                'revenue': float(row[4]),
+                'conversion_rate': float(row[5]),
+                'cart_add_rate': float(row[6])
+            }
+        else:
+            data = {}
+
+        return jsonify(data)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/hourly-activity')
+def get_hourly_activity():
+    """Get hourly activity trends using materialized view"""
+    client = get_clickhouse_client()
+
+    try:
+        # Query hourly aggregations - much faster than scanning raw events
+        query = """
+        SELECT
+            event_hour,
+            sum(event_count) as total_events,
+            sum(unique_users) as unique_users,
+            sum(total_revenue) as revenue
+        FROM mv_hourly_events
+        WHERE event_date >= today() - INTERVAL 7 DAY
+        GROUP BY event_hour
+        ORDER BY event_hour
+        """
+
+        results = client.execute(query)
+        data = {
+            'hours': [row[0] for row in results],
+            'events': [row[1] for row in results],
+            'users': [row[2] for row in results],
+            'revenue': [float(row[3]) for row in results]
+        }
+
+        return jsonify(data)
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
