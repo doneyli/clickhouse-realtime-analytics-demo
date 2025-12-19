@@ -15,6 +15,8 @@ This isn't just a basic ClickHouse setup - it's a comprehensive showcase of **ad
 ✅ **Refreshable MVs** - Complex analytics (rankings, cohorts, RFM)
 ✅ **Optimized ORDER BY** - Based on actual query patterns
 
+📐 **[View Complete Architecture Diagram →](ARCHITECTURE.md)** - Detailed Mermaid visualization of data flow
+
 ## 🚀 Features
 
 - **ClickHouse Database**: High-performance columnar database optimized for analytics
